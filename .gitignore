@@ -1,0 +1,21 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+
+# 临时文件
+inspect_ur_result.txt
+UR_monitor.log
+.DS_Store
+
+# 本地真实配置（源码目录只提交 example）
+/monitor_config.json
+
+# 实际交付目录：存放 EXE、真实配置和运行日志
+/ur_monitor/

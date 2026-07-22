@@ -1,0 +1,7 @@
+{
+  "ur_process_name": "UR实时采集.exe",
+  "collector_process_name": "牛.exe",
+  "ur_exe_path": "C:\\Path\\To\\UR实时采集.exe",
+  "missing_timeout_seconds": 300,
+  "poll_interval_seconds": 30
+}

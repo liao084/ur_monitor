@@ -1,0 +1,10 @@
+[project]
+name = "ur-monitor-and-click"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "psutil>=7.2.2",
+    "pywinauto>=0.6.9",
+]
