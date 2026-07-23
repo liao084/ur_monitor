@@ -1,0 +1,52 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - "ur_monitor.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/build-windows.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Check Python syntax
+        run: uv run python -m py_compile ur_monitor.py
+
+      - name: Build UR Monitor EXE
+        run: >
+          uv run pyinstaller
+          --clean
+          --onefile
+          --name ur_monitor
+          ur_monitor.py
+
+      - name: Upload UR Monitor EXE
+        uses: actions/upload-artifact@v7
+        with:
+          name: ur-monitor-windows
+          path: dist/ur_monitor.exe
+          if-no-files-found: error
+          retention-days: 30

@@ -15,7 +15,6 @@ from pywinauto import Desktop
 
 
 CONFIG_FILENAME = "monitor_config.json"
-LOG_FILENAME = "UR_monitor.log"
 OPEN_SCRIPT_BUTTON_TITLE = "打开脚本"
 
 
@@ -26,16 +25,13 @@ def get_runtime_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
-def configure_logger(runtime_dir: Path) -> logging.Logger:
-    """日志只写入文件，正常轮询不产生日志。"""
+def configure_logger() -> logging.Logger:
+    """日志只输出到控制台，正常轮询不产生日志。"""
     logger = logging.getLogger("ur_monitor")
     logger.setLevel(logging.INFO)
     logger.handlers.clear()
 
-    handler = logging.FileHandler(
-        runtime_dir / LOG_FILENAME,
-        encoding="utf-8-sig",
-    )
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(
         logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
     )
@@ -129,13 +125,14 @@ def run_monitor(config: dict[str, Any], logger: logging.Logger) -> None:
     poll_interval = float(config["poll_interval_seconds"])
 
     collector_missing_since: float | None = None
+    is_clicked: bool = False
 
     while True:
         try:
             ur_processes = find_processes(ur_process_name)
             collector_processes = find_processes(collector_process_name)
             now = time.monotonic()
-
+            # 如果没有找到 UR 进程，直接启动
             if not ur_processes:
                 collector_missing_since = None
                 logger.warning(
@@ -144,17 +141,20 @@ def run_monitor(config: dict[str, Any], logger: logging.Logger) -> None:
                     ur_exe_path,
                 )
                 try:
+                    # UR进程不存在，尝试启动UR并重置点击打开脚本信号
+                    is_clicked = False
                     start_ur(ur_exe_path)
                 except Exception:
                     logger.exception("启动 %s 失败", ur_process_name)
-
+            # 如果找到了 UR 进程和牛进程，重置全部状态
             elif collector_processes:
                 collector_missing_since = None
-
+                is_clicked = False
+            # 如果没有找到牛进程，开始计时
             elif collector_missing_since is None:
                 collector_missing_since = now
-
-            elif now - collector_missing_since >= missing_timeout:
+            # 如果牛进程已缺失超过阈值，执行打开脚本操作
+            elif now - collector_missing_since >= missing_timeout and not is_clicked:
                 ur_pid = ur_processes[0].pid
                 logger.warning(
                     "%s 已连续缺失 %.0f 秒，调用 PID %s 的“%s”按钮",
@@ -165,11 +165,32 @@ def run_monitor(config: dict[str, Any], logger: logging.Logger) -> None:
                 )
                 try:
                     invoke_open_script(ur_pid)
+                    is_clicked = True
                 except Exception:
                     logger.exception("调用“%s”按钮失败", OPEN_SCRIPT_BUTTON_TITLE)
                 finally:
                     # 无论本次调用是否成功，都重新等待一个完整周期再尝试。
                     collector_missing_since = time.monotonic()
+            # 如果已经执行打开脚本操作，牛进程再次超过阈值，执行kill UR进程
+            elif now - collector_missing_since >= missing_timeout and is_clicked:
+                ur_process = ur_processes[0]
+                logger.warning(
+                    "已执行点击 %s 按钮，超过 %.0f 秒，%s 仍然没有打开，执行kill %s",
+                    OPEN_SCRIPT_BUTTON_TITLE,
+                    missing_timeout,
+                    collector_process_name,
+                    ur_process_name,
+                )
+                try:
+                    ur_process.kill()
+                    ur_process.wait(timeout=10)
+                except psutil.NoSuchProcess:
+                    pass
+                except (psutil.AccessDenied, psutil.TimeoutExpired):
+                    logger.exception("强制结束 UR 失败，PID=%s", ur_process.pid)
+                finally:
+                    collector_missing_since = None
+                    is_clicked = False
 
         except Exception:
             logger.exception("监控循环发生异常")
@@ -179,7 +200,7 @@ def run_monitor(config: dict[str, Any], logger: logging.Logger) -> None:
 
 def main() -> None:
     runtime_dir = get_runtime_dir()
-    logger = configure_logger(runtime_dir)
+    logger = configure_logger()
 
     try:
         config = load_config(runtime_dir)
